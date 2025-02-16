@@ -1,27 +1,30 @@
 from parcs.server import Service, serve
-import math
-
-def factorize_range(n, start, end):
-    factors = []
-
-    if start <= 2:
-        while n % 2 == 0:
-            factors.append(2)
-            n //= 2
-
-    for i in range(max(3, start), end, 2):
-         while n % i == 0:
-            factors.append(i)
-            n //= i
-    return factors, n
+from random import randint
 
 
-class Factor(Service):
+def miller_rabin_iteration(a, r, s):
+    n = randint(2, a - 1)
+    x = pow(n, s, a)
+    if x == 1 or x == a - 1:
+        return True
+    for _ in range(r - 1):
+        x = pow(x, 2, a)
+        if x == a - 1:
+            return True
+    return False
+
+
+class MillerRabinTest(Service):
     def run(self):
-        n, start, end = self.recv(), self.recv(), self.recv()
+        a, r, s, start, end = self.recv(), self.recv(), self.recv(), self.recv(), self.recv()
 
-        facts, remaining_n = factorize_range(n, start, end)
-        self.send(facts)
-        self.send(remaining_n)
+        isPrime = True
+        for _ in range(start, end):
+            if not miller_rabin_iteration(a, r, s):
+                isPrime = False
+                break
 
-serve(Factor())
+        self.send(isPrime)
+
+
+serve(MillerRabinTest())
