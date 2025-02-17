@@ -1,71 +1,63 @@
-![PARCS logo](/logo.png)
+# Distributed Miller-Rabin algorithm
 
-This is a state-of-the-art implementation of the PARCS system described in [the paper][paper]. It's heterogeneous in the nature implying that
-it's language agnostic. Heavily relies on the [Docker Swarm][swarm] and [Docker's][docker] networking features. Under the hood it's a set of a libraries
-that allow one to operate a swarm in a PARCS-specific fashion.
+## Introduction
 
-Features:
-* Works on any Docker Swarm cluster
-* Language agnostic design
-* Web UI powered by [Swarmpit][swarmpit]
-* Full isolation (containerization)
-* Flexible dependency management
-* Centralized module repository
+The project implements a **distributed version of the Miller-Rabin primality test** using the **heterogeneous PARCS** technology. The system consists of a **master node** (implemented in Go) and multiple **worker nodes** (implemented in Python), enabling parallel execution of the algorithm.
+
+## Technologies
+
+- **PARCS**: a framework for distributed computing.
+- **Python**: used for worker node implementation.
+- **Go**: used for master node implementation.
+- **Docker & Docker Swarm**: for containerized deployment.
+
+## Miller-Rabin algorithm
+
+The Miller-Rabin test is a probabilistic algorithm to determine whether a number `n` is prime.
+
+1. Express `n - 1` in the form `2^s * d`, where:
+   - `s` is a non-negative integer,
+   - `d` is an odd integer.
+
+2. Choose a random integer `a` such that `1 < a < n - 1`.
+
+3. If one of the following conditions holds:
+   - `a^d ≡ 1 (mod n)`
+   - `a^(2^r * d) ≡ -1 (mod n)`
+   for some `0 ≤ r < s`, then `n` is *probably prime*.
+
+4. If neither of the above conditions is met, then `n` is *composite*.
+
+5. Repeat the test `k` times with different values of `a` to increase the probability that `n` is truly prime.
+
+The probability of falsely identifying a composite number as prime is at most `4^(-k)`.
+
+## Distributed implementation
+
+The algorithm is **distributed** across multiple worker nodes to enhance performance.
+
+### **Worker nodes**
+- Receive test parameters from the master node.
+- Perform iterations of the Miller-Rabin test.
+- Return the result to the master node.
+- If a composite witness is found, the worker halts all tests.
+
+### **Master node**
+- Receives input values `n` and iteration count `k`.
+- Computes values of `s` and `d`.
+- Distributes the work among worker nodes.
+- Collects results and determines primality.
 
 ## Cluster management
 
-One of the biggest advantages of this PARCS implementation is that it doesn't require any special setup. Any Docker Swarm cluster will do!
-There are many nice tutorials that teach how to bring up a Docker Swarm cluster: [[1]][cluster-1], [[2]][cluster-2] and [[3]][cluster-3].
+One of the biggest advantages of this PARCS implementation is that it does not require any special setup. Any Docker Swarm cluster will do.
 
-### Why not Kubernetes?
-
-Some of you might be wondering why I decided to base project on Swarm and not on [Kubernetes][kubernetes]. There are multiple reasons for
-this decision:
-
-* Kubernetes cluster is harder to set up and maintain.
-* PARCS only need a small subset of the features provided by platform.
-* Docker Swarm is now shipped as part of the standard Docker distribution.
-* Sticking to the [KISS principle][kiss].
-
-As a matter of fact I'm only using load balancing(distributed service deployment) and automatic service discovery(overlay network) features
-provided by both platforms. Everything else is a plain old Docker and it's friends.
-
-There are more detailed articles on the web that compare two platforms on the multiple axes: [[1]][swarm-vs-kubernetes-1], [[2]][swarm-vs-kubernetes-2].
-Now let's take a look at how easy it is to bring up a Docker Swarm cluster on the [Google Cloud Platform][gcp].
-
-### Swarm cluster on GCP
-
-#### TL; DR One can use `gce-parcs.sh` script to bootstrap cluster in under 5 mins!
-
-```console
-me@laptop~:$ sh gce-parcs.sh
-Number of workers: 3
-GCE instances for leader and 3 workers created
-Docker installed on leader
-Docker installed on worker-1
-Docker installed on worker-2
-Docker installed on worker-3
-Docker Swarm initialized
-PARCS port (4321) is open on leader
-Overlay network created for PARCS
-Swarmpit installed
-Firewall rule for Swarmpit created
----------------------------------------
-LEADER_URL=tcp://10.138.0.25:4321
-Dashboard URL: http://34.83.234.248:888
-Login: admin
-Password: password
-```
-
-#### Manual setup
-
-I'm gonna be using a Google Cloud CLI tool called [gcloud][gcloud] to orchestrate the cluster from the command line. Also we'll use
-[Google Compute Engine][gce] as a basement for the cluster.
+### Swarm cluster on Google Cloud Platform
 
 1. First of all you need to make sure that `gcloud` is linked to your accont. If it's the first time you use the CLI just fire `gcloud init`
-and follow the instructions. I'm also gonna set up the sensible defaults for my region via `gcloud config set compute/zone us-west1-b`.
+and follow the instructions. I am also gonna set up the sensible defaults for my region via `gcloud config set compute/zone us-west1-b`.
 
-2. Now let's start a couple of VMs that are will form a cluster later. Here I'm creating a cluster of 4 nodes that will be managed by a leader.
+2. Now let's start a couple of VMs that are will form a cluster later. Here I am creating a cluster of 4 nodes that will be managed by a leader.
 
     ```console
     me@laptop~:$ gcloud compute instances create leader worker-1 worker-2 worker-3
@@ -81,7 +73,7 @@ and follow the instructions. I'm also gonna set up the sensible defaults for my 
     worker-3  us-west1-b  n1-standard-1               10.138.0.5   35.247.116.107  RUNNING
     ```
 
-3. Unfortunatelly the default Debian image doesn't ship Docker by default, but we can use this [convenience script][convenience-script] to install
+3. Unfortunatelly the default Debian image does not ship Docker by default, but we can use this [convenience script][convenience-script] to install
 the engine as follows
 
     ```console
@@ -91,7 +83,7 @@ the engine as follows
 
     Make sure that you do this step for every node in the cluster replacing `leader` with a corresponding name.
 
-4. It's time to initialize a swarm. We can do this by `ssh`-ing into a `leader` and running commands:
+4. It is time to initialize a swarm. We can do this by `ssh`-ing into a `leader` and running commands:
 
     ```console
     me@laptop~:$ gcloud compute ssh leader
@@ -116,7 +108,7 @@ the engine as follows
     This node joined a swarm as a worker.
     ```
 
-    Don't forget to do this step **for each one** of the `worker` nodes you created.
+    Do not forget to do this step **for each one** of the `worker` nodes you created.
 
 6. **IMPORTANT!** PARCS needs `leader`-s Docker Engine to listen on the port `4321`.
 
@@ -140,118 +132,44 @@ the engine as follows
 
 Now we have a fully configured Docker Swarm cluster ready to run PARCS services.
 
-### Writing PARCS modules
+### PARCS modules
 
-All the PARCS modules (aka services) should be accessible from some Docker registry. We're going to use a
-default [Docker Hub][docker-hub] registry here as an example. All the example code can be found in this repo
-under `go/` and `py/` subdirs.
+All the PARCS modules (aka services) are accessible from the Docker registry. All the code can be found in this repo
+under `parcs-nw-py/` and `parcs-nw-go/` subdirs.
 
-#### Example service
+#### Service
 
-Let's take a look at the simple PARCS service written in Python that given a number `N` and a range `[A; B)`
-just iterates in a range looking for divisors of `N`. This service can be implemented like:
-
-```python
-from parcs.server import Service, serve
-
-class Factor(Service):
-    def run(self):
-        n, a, b = self.recv(), self.recv(), self.recv()
-        facts = []
-        for i in range(a, b):
-            if n % i == 0:
-                facts.append(i)
-        self.send(facts)
-
-serve(Factor())
-```
-
-Now assuming this code lives in the file `main.py` we can build a Docker image for this program by running:
+Now assuming the code lives in the file `worker.py` we can build a Docker image for this program by running:
 
 ```console
-me@laptop~:$ wget https://raw.githubusercontent.com/lionell/parcs/master/py/Dockerfile
+me@laptop~:$ wget https://raw.githubusercontent.com/Braun-Alex/distributed-computing/main/parcs-nw-py/Dockerfile
 me@laptop~:$ cat Dockerfile
 FROM lionell/parcs-py
 
-COPY main.py .
-CMD [ "python", "main.py" ]
-
-me@laptop~:$ docker build -t lionell/factor-py .
-Sending build context to Docker daemon  3.072kB
-Step 1/3 : FROM lionell/parcs-py
- ---> ef17f28e7f39
-Step 2/3 : COPY main.py .
- ---> Using cache
- ---> 28f7e7b055d6
-Step 3/3 : CMD [ "python", "main.py" ]
- ---> Using cache
- ---> ea69c5b3c156
-Successfully built ea69c5b3c156
-Successfully tagged lionell/factor-py:latest
-
-me@laptop~:$ docker push lionell/factor-py:latest
+COPY worker.py .
+CMD [ "python3", "worker.py" ]
+me@laptop~:$ docker build -t oleksiibraun/parcs-nw-py .
+me@laptop~:$ docker push oleksiibraun/parcs-nw-py:latest
 ```
 
-PARCS provides base Docker images for all supported languages: [lionell/parcs-py][parcs-py], [lionell/parcs-go][parcs-go]
+PARCS provides base Docker images for all supported languages: [lionell/parcs-py][parcs-py], [lionell/parcs-go][parcs-go].
 
-#### Example runner
+#### Runner
 
 PARCS needs a special type of jobs that will kick off the computation. These are **Runners** and they can be
-implemented in a very similar way to a servises:
+implemented in a very similar way to a services.
 
-```go
-package main
-
-import (
-	"github.com/lionell/parcs/go/parcs"
-	"log"
-	"os"
-	"strconv"
-)
-
-type Program struct {
-	*parcs.Runner
-}
-
-func (h *Program) Run() {
-	n, _ := strconv.Atoi(os.Getenv("N"))
-	t, _ := h.Start("lionell/factor-py")
-	t.SendAll(n, 1, n+1)
-	var facts []int
-	t.Recv(&facts)
-	log.Printf("Factors %v", facts)
-	t.Shutdown()
-}
-
-func main() {
-	parcs.Exec(&Program{parcs.DefaultRunner()})
-}
-```
-
-Again, assuming this code lives in the file `main.go` we can build a Docker image for this program by running:
+Assuming the code lives in the file `master.go` we can build a Docker image for this program by running:
 
 ```console
-me@laptop~:$ wget https://raw.githubusercontent.com/lionell/parcs/master/go/Dockerfile
+me@laptop~:$ wget https://raw.githubusercontent.com/Braun-Alex/distributed-computing/main/parcs-nw-go/Dockerfile
 me@laptop~:$ cat Dockerfile
 FROM lionell/parcs-go
 
-COPY main.go .
-CMD [ "go", "run ", "main.go" ]
-
-me@laptop~:$ docker build -t lionell/runner-go .
-Sending build context to Docker daemon  3.584kB
-Step 1/3 : FROM lionell/parcs-go
- ---> 4d6be0e795ec
-Step 2/3 : COPY main.go .
- ---> f1fe810151ba
-Step 3/3 : CMD [ "go", "run", "main.go" ]
- ---> Running in bd9c0480b072
-Removing intermediate container bd9c0480b072
- ---> 63a8a590eefc
-Successfully built 63a8a590eefc
-Successfully tagged lionell/runner-go:latest
-
-me@laptop~:$ docker push lionell/runner-go:latest
+COPY master.go .
+CMD [ "go", "run ", "master.go" ]
+me@laptop~:$ docker build -t oleksiibraun/parcs-nw-go .
+me@laptop~:$ docker push oleksiibraun/parcs-nw-go:latest
 ```
 
 ### Running PARCS modules
@@ -273,102 +191,22 @@ me@leader~:$ sudo docker service create \
                     --restart-condition none \
                     --env LEADER_URL=tcp://<LEADER INTERNAL IP>:4321 \
                     --name runner \
-                    --env N=123456789 \
-                    lionell/runner-go
-
-bjchstu57756oq5ppa6lgg1c3
-overall progress: 1 out of 1 tasks 
-1/1: running   [==================================================>] 
-verify: Service converged 
-
+                    --env A=1000000000000000003 \
+                    --env WORKERS=3 \
+                    --env ITERATIONS=50 \
+                    oleksiibraun/parcs-nw-go
 me@leader~:$ sudo docker service logs -f runner
-runner.1.luy@worker-2 05:59:31 Welcome to PARCS-Go!
-runner.1.luy@worker-2 05:59:31 Running your program...
-runner.1.luy@worker-2 06:00:06 Connection to silly_shtern established
-runner.1.luy@worker-2 06:00:17 Factors [1 3 9 3607 3803 10821 11409 32463 34227 13717421 41152263 123456789]
-runner.1.luy@worker-2 06:00:17 Connection to silly_shtern closed
-runner.1.luy@worker-2 06:00:17 Bye!
-
 me@leader~:$ sudo docker service rm runner
 ```
 
-Last 3 parameters are ones that change between invocations:
-* `--name` is a way to give an invocation a name that can later be used to obtain the results of a specific invocation.
-* `--env N=123456789` is specific for this particular runner and tells that we're interested in divisors of that number.
-* `lionell/runner-go` is a Docker image that contains the runner itself.
+### Last step
 
-### PARCS Web UI
-
-#### Installing Swarmpit
-
-Comprehensive guide for the installation can be found on the [Github page][swarmpit-install]. Here I'll show the easiest
-way to do it
-
-```console
-me@laptop~:$ gcloud compute ssh leader
-me@leader~:$ sudo docker run -it --rm \
-                    --name swarmpit-installer \
-                    --volume /var/run/docker.sock:/var/run/docker.sock \
-                    swarmpit/install:1.9
-...
-Summary
-Username: admin
-Password: password
-Swarmpit is running on port :888
-
-Enjoy :)
-```
-
-It will ask you to set up an admin account for the control panel. Make sure that you remember the credentials as you'll
-need them later to access the dashboard.
-
-#### Setting up a firewall
-
-The last step is to make a firewall aware of the Swarmpit. We want to expose a default port `888` to the outside world.
-
-```console
-me@laptop~:$ gcloud compute firewall-rules create swarmpit --allow tcp:888
-Creating firewall... Done.
-
-NAME     NETWORK  DIRECTION  PRIORITY  ALLOW    DENY  DISABLED
-swarmpit default  INGRESS    1000      tcp:888        False
-```
-
-After this is done you can navigate to the external IP address of the `leader` and use a beautiful web UI to manage the
-cluster. Here's one way to obtain the URL
-
-```console
-me@laptop~:$ gcloud compute instances list | grep leader | awk '{print "http://" $5 ":888"}'
-http://35.247.55.235:888
-```
-
-![Swarmpit dashboard image](/dashboard.png)
-
-### Cleaning up
-
-Don't forget to remove all created VMs. If you don't do it GCP can charge you!
+Do not forget to destroy all created VMs. If you do not do it Google Cloud Platform can charge you!
 
 ```console
 me@laptop~:$ gcloud compute instances delete leader worker-1 worker-2 worker-3
-me@laptop~:$ gcloud compute firewall-rules delete swarmpit
 ```
 
-[paper]: https://www.scirp.org/journal/paperinformation.aspx?paperid=78011 
-[docker]: https://www.docker.com
-[swarm]: https://docs.docker.com/engine/swarm
-[swarmpit]: https://swarmpit.io
-[cluster-1]: https://docs.docker.com/engine/swarm/swarm-tutorial/create-swarm
-[cluster-2]: https://training.play-with-docker.com/swarm-service-discovery
-[cluster-3]: https://rominirani.com/docker-swarm-tutorial-b67470cf8872
-[kubernetes]: https://kubernetes.io
-[kiss]: https://en.wikipedia.org/wiki/KISS_principle
-[swarm-vs-kubernetes-1]: https://vexxhost.com/blog/kubernetes-vs-docker-swarm-containerization-platforms
-[swarm-vs-kubernetes-2]: https://thenewstack.io/kubernetes-vs-docker-swarm-whats-the-difference
-[gcp]: http://cloud.google.com
-[gcloud]: https://cloud.google.com/sdk/gcloud
-[gce]: https://cloud.google.com/compute
-[convenience-script]: https://docs.docker.com/engine/install/debian/#install-using-the-convenience-script
-[docker-hub]: https://hub.docker.com
-[parcs-py]: https://hub.docker.com/repository/docker/lionell/parcs-py
-[parcs-go]: https://hub.docker.com/repository/docker/lionell/parcs-go
-[swarmpit-install]: https://github.com/swarmpit/swarmpit
+## License
+
+This project is licensed under the MIT License. See the LICENSE file for details.
